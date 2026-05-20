@@ -1,8 +1,12 @@
 import json
+import os
 import tempfile
 import unittest
+from importlib import reload
 from pathlib import Path
+from unittest.mock import patch
 
+import agent_safety_hooks.guard as guard
 from agent_safety_hooks.guard import find_command, load_custom_rules, match_rules, run_hook
 
 
@@ -78,6 +82,17 @@ class GuardTest(unittest.TestCase):
             config_path.write_text(json.dumps({"deny": ["docker compose down [prod"]}))
             rules = load_custom_rules(config_path)
             self.assertTrue(match_rules("docker compose down [prod", rules))
+
+    def test_deny_file_env_var_sets_default_config_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "project-rules.json"
+            config_path.write_text(json.dumps({"deny": ["terraform destroy"]}))
+            with patch.dict(os.environ, {"AGENT_SAFETY_HOOKS_DENY_FILE": str(config_path)}):
+                reloaded_guard = reload(guard)
+                try:
+                    self.assertTrue(reloaded_guard.match_rules("terraform destroy"))
+                finally:
+                    reload(guard)
 
 
 if __name__ == "__main__":

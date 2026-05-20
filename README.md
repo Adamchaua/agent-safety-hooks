@@ -64,7 +64,7 @@ Create a starter config:
 printf '%s\n' '{"command":"init-config"}' | agent-safety-guard
 ```
 
-Then edit `~/.agent-safety-hooks/rules.json`:
+Then edit `~/.agent-safety-hooks/rules.json`, or set `AGENT_SAFETY_HOOKS_DENY_FILE` to load rules from a project-specific file:
 
 ```json
 {

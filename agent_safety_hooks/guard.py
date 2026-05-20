@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 CONFIG_DIR = Path(os.environ.get("AGENT_SAFETY_HOME", Path.home() / ".agent-safety-hooks"))
-DEFAULT_CONFIG_PATH = CONFIG_DIR / "rules.json"
+DEFAULT_CONFIG_PATH = Path(os.environ.get("AGENT_SAFETY_HOOKS_DENY_FILE", CONFIG_DIR / "rules.json"))
 DEFAULT_LOG_PATH = CONFIG_DIR / "blocked.jsonl"
 
 
