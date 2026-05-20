@@ -17,6 +17,7 @@ This repo starts with a small, auditable guard for that problem.
 - `DROP TABLE`
 - `TRUNCATE`
 - `DELETE FROM ...` without a `WHERE` clause
+- Optional custom deny rules from `~/.agent-safety-hooks/rules.json`
 
 Blocked attempts are logged to:
 
@@ -55,6 +56,30 @@ The hook accepts JSON on stdin and tries common payload shapes such as:
 
 Normal commands exit `0`. Blocked commands exit `2`.
 
+## ⚙️ Custom Deny Rules
+
+Create a starter config:
+
+```bash
+printf '%s\n' '{"command":"init-config"}' | agent-safety-guard
+```
+
+Then edit `~/.agent-safety-hooks/rules.json`:
+
+```json
+{
+  "deny": [
+    {
+      "name": "production-kubectl-delete",
+      "pattern": "\\bkubectl\\s+delete\\b.*\\b(prod|production)\\b",
+      "message": "Deleting production Kubernetes resources needs human approval."
+    }
+  ]
+}
+```
+
+Rules are regular expressions matched case-insensitively against the shell command. Invalid regex patterns are treated as literal text so a typo does not crash the hook.
+
 ## 🧪 Verification
 
 ```bash
@@ -63,7 +88,7 @@ python3 -m unittest discover -s tests -v
 
 ## 🗺️ Roadmap
 
-- Config file for custom allow/deny rules
+- Custom allow rules for trusted local-only maintenance commands
 - Dry-run mode for teams adopting hooks gradually
 - Adapters/examples for more coding-agent CLIs
 - GitHub Action that checks agent-generated scripts for dangerous commands

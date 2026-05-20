@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-DEFAULT_LOG_PATH = Path.home() / ".agent-safety-hooks" / "blocked.jsonl"
+CONFIG_DIR = Path(os.environ.get("AGENT_SAFETY_HOME", Path.home() / ".agent-safety-hooks"))
+DEFAULT_CONFIG_PATH = CONFIG_DIR / "rules.json"
+DEFAULT_LOG_PATH = CONFIG_DIR / "blocked.jsonl"
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,43 @@ RULES: tuple[Rule, ...] = (
         "`DELETE FROM` without `WHERE` can remove every row. Add a WHERE clause or ask first.",
     ),
 )
+
+
+def _compile_custom_rule(item: Any, index: int) -> Rule | None:
+    if isinstance(item, str):
+        name = f"custom-{index + 1}"
+        pattern = item
+        message = f"Custom rule `{pattern}` matched. Ask for explicit approval first."
+    elif isinstance(item, dict):
+        pattern = item.get("pattern")
+        if not isinstance(pattern, str) or not pattern.strip():
+            return None
+        name = str(item.get("name") or f"custom-{index + 1}")
+        message = str(item.get("message") or f"Custom rule `{pattern}` matched. Ask for explicit approval first.")
+    else:
+        return None
+
+    try:
+        compiled = re.compile(pattern, re.I)
+    except re.error:
+        compiled = re.compile(re.escape(pattern), re.I)
+    return Rule(name, compiled, message)
+
+
+def load_custom_rules(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[Rule, ...]:
+    if not config_path.exists():
+        return ()
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ()
+
+    items = data.get("deny") if isinstance(data, dict) else data
+    if not isinstance(items, list):
+        return ()
+
+    rules = [_compile_custom_rule(item, index) for index, item in enumerate(items)]
+    return tuple(rule for rule in rules if rule is not None)
 
 
 def load_payload(stdin: str | None = None) -> dict[str, Any]:
@@ -91,8 +131,9 @@ def project_path(payload: dict[str, Any]) -> str:
     return os.getcwd()
 
 
-def match_rules(command: str, rules: Iterable[Rule] = RULES) -> list[Rule]:
-    return [rule for rule in rules if rule.pattern.search(command)]
+def match_rules(command: str, rules: Iterable[Rule] | None = None) -> list[Rule]:
+    active_rules = tuple(rules) if rules is not None else RULES + load_custom_rules()
+    return [rule for rule in active_rules if rule.pattern.search(command)]
 
 
 def write_block_log(command: str, path: str, rules: list[Rule], log_path: Path = DEFAULT_LOG_PATH) -> None:
@@ -120,8 +161,34 @@ def run_hook(payload: dict[str, Any], log_path: Path = DEFAULT_LOG_PATH) -> tupl
     return 2, message
 
 
+def write_default_config() -> None:
+    DEFAULT_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    if DEFAULT_CONFIG_PATH.exists():
+        return
+    DEFAULT_CONFIG_PATH.write_text(
+        json.dumps(
+            {
+                "deny": [
+                    {
+                        "name": "production-kubectl-delete",
+                        "pattern": r"\bkubectl\s+delete\b.*\b(prod|production)\b",
+                        "message": "Deleting production Kubernetes resources needs human approval.",
+                    }
+                ]
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> int:
     payload = load_payload()
+    if payload.get("command") == "init-config":
+        write_default_config()
+        print(f"Config ready: {shlex.quote(str(DEFAULT_CONFIG_PATH))}")
+        return 0
     code, message = run_hook(payload)
     if message:
         print(message, file=sys.stderr)

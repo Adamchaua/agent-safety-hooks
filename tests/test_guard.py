@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from agent_safety_hooks.guard import find_command, match_rules, run_hook
+from agent_safety_hooks.guard import find_command, load_custom_rules, match_rules, run_hook
 
 
 class GuardTest(unittest.TestCase):
@@ -50,6 +50,34 @@ class GuardTest(unittest.TestCase):
             self.assertEqual(entry["attempted_command"], "rm -rf build")
             self.assertEqual(entry["project_path"], "/repo")
             self.assertIn("recursive-force-delete", entry["rules"])
+
+    def test_loads_custom_deny_rules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "rules.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "deny": [
+                            {
+                                "name": "prod-kubectl-delete",
+                                "pattern": r"\bkubectl\s+delete\b.*\bprod\b",
+                                "message": "Production deletes need approval.",
+                            }
+                        ]
+                    }
+                )
+            )
+            rules = load_custom_rules(config_path)
+            matches = match_rules("kubectl delete pod api -n prod", rules)
+            self.assertEqual([rule.name for rule in matches], ["prod-kubectl-delete"])
+            self.assertEqual(matches[0].message, "Production deletes need approval.")
+
+    def test_invalid_custom_regex_falls_back_to_literal_match(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "rules.json"
+            config_path.write_text(json.dumps({"deny": ["docker compose down [prod"]}))
+            rules = load_custom_rules(config_path)
+            self.assertTrue(match_rules("docker compose down [prod", rules))
 
 
 if __name__ == "__main__":
