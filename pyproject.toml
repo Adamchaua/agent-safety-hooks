@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-safety-hooks"
+version = "0.1.0"
+description = "Small safety hooks that stop AI coding agents from running destructive shell commands."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Adam Chau"}]
+keywords = ["ai-agents", "claude-code", "codex", "hooks", "developer-safety"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+]
+
+[project.scripts]
+agent-safety-guard = "agent_safety_hooks.guard:main"
