@@ -25,7 +25,7 @@ Blocked attempts are logged to:
 ~/.agent-safety-hooks/blocked.jsonl
 ```
 
-The log redacts common token and key shapes before writing command text, including `*_TOKEN=...`, `*_API_KEY=...`, bearer tokens, GitHub `ghp_...` tokens, and `sk-...` API keys.
+The log redacts common token and key shapes before writing command text, including `*_TOKEN=...`, `*_API_KEY=...`, bearer tokens, GitHub personal access tokens, and provider API keys.
 
 ## 🚀 Quick Start
 
@@ -35,6 +35,12 @@ printf '%s\n' '{"tool_input":{"command":"rm -rf build"},"cwd":"/repo"}' | agent-
 ```
 
 Expected result: the command is blocked with exit code `2` and a clear reason.
+
+You can also check one command directly, which is useful for CI scripts or quick local smoke tests:
+
+```bash
+agent-safety-guard --command "git push --force origin main" --cwd /repo
+```
 
 ## 🧩 Claude Code Hook Usage
 
@@ -91,6 +97,12 @@ AGENT_SAFETY_HOOKS_DRY_RUN=true agent-safety-guard
 ```
 
 Dry-run mode still logs matching commands, but exits `0` and prints `Would block by agent-safety-hooks (dry run).` instead of blocking the command. Hook payloads can also set `"dry_run": true` for per-call auditing.
+
+Direct command checks can use the same mode:
+
+```bash
+agent-safety-guard --dry-run --command "rm -rf build"
+```
 
 ## 🧪 Verification
 

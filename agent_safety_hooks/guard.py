@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -213,8 +214,23 @@ def write_default_config() -> None:
     )
 
 
-def main() -> int:
-    payload = load_payload()
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Block destructive shell commands before AI coding agents run them."
+    )
+    parser.add_argument("--command", help="Check a command directly instead of reading hook JSON from stdin.")
+    parser.add_argument("--cwd", help="Project path to include in reports when using --command.")
+    parser.add_argument("--dry-run", action="store_true", help="Report matches but exit successfully.")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    payload = (
+        {"command": args.command, "cwd": args.cwd or os.getcwd(), "dry_run": args.dry_run}
+        if args.command is not None
+        else load_payload()
+    )
     if payload.get("command") == "init-config":
         write_default_config()
         print(f"Config ready: {shlex.quote(str(DEFAULT_CONFIG_PATH))}")

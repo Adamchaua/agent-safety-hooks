@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import agent_safety_hooks.guard as guard
-from agent_safety_hooks.guard import find_command, is_dry_run, load_custom_rules, match_rules, redact_secrets, run_hook
+from agent_safety_hooks.guard import find_command, is_dry_run, load_custom_rules, main, match_rules, redact_secrets, run_hook
 
 
 class GuardTest(unittest.TestCase):
@@ -122,10 +122,16 @@ class GuardTest(unittest.TestCase):
 
     def test_redacts_common_token_shapes(self):
         self.assertEqual(
-            redact_secrets("curl -H 'Authorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz'"),
-            "curl -H 'Authorization: Bearer [REDACTED]'",
+            redact_secrets("curl -H 'Authorization: Bearer tok_12345678901234567890' rm -rf build"),
+            "curl -H 'Authorization: Bearer [REDACTED]' rm -rf build",
         )
         self.assertEqual(redact_secrets("X-API-Key: abc123 rm -rf build"), "X-API-Key: [REDACTED] rm -rf build")
+
+    def test_main_accepts_direct_command_argument(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.dict(os.environ, {"AGENT_SAFETY_HOME": directory}):
+                code = main(["--command", "rm -rf build", "--cwd", "/repo", "--dry-run"])
+            self.assertEqual(code, 0)
 
 
 if __name__ == "__main__":
