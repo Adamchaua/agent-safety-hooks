@@ -7,7 +7,17 @@ from pathlib import Path
 from unittest.mock import patch
 
 import agent_safety_hooks.guard as guard
-from agent_safety_hooks.guard import find_command, is_dry_run, load_custom_rules, main, match_rules, redact_secrets, run_hook
+from agent_safety_hooks.guard import (
+    find_command,
+    is_dry_run,
+    load_custom_allow_rules,
+    load_custom_rules,
+    main,
+    match_allow_rules,
+    match_rules,
+    redact_secrets,
+    run_hook,
+)
 
 
 class GuardTest(unittest.TestCase):
@@ -75,6 +85,40 @@ class GuardTest(unittest.TestCase):
             matches = match_rules("kubectl delete pod api -n prod", rules)
             self.assertEqual([rule.name for rule in matches], ["prod-kubectl-delete"])
             self.assertEqual(matches[0].message, "Production deletes need approval.")
+
+    def test_loads_custom_allow_rules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "rules.json"
+            config_path.write_text(
+                json.dumps(
+                    {
+                        "deny": ["rm -rf"],
+                        "allow": [
+                            {
+                                "name": "local-build-cleanup",
+                                "pattern": r"^rm\s+-rf\s+build$",
+                                "message": "Local build cleanup is allowed.",
+                            }
+                        ],
+                    }
+                )
+            )
+            rules = load_custom_allow_rules(config_path)
+            matches = match_allow_rules("rm -rf build", rules)
+            self.assertEqual([rule.name for rule in matches], ["local-build-cleanup"])
+
+    def test_custom_allow_rules_override_deny_rules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "rules.json"
+            config_path.write_text(json.dumps({"allow": [r"^rm\s+-rf\s+build$"]}))
+            with patch.dict(os.environ, {"AGENT_SAFETY_HOOKS_DENY_FILE": str(config_path)}):
+                reloaded_guard = reload(guard)
+                try:
+                    code, message = reloaded_guard.run_hook({"command": "rm -rf build", "cwd": "/repo"})
+                finally:
+                    reload(guard)
+            self.assertEqual(code, 0)
+            self.assertEqual(message, "")
 
     def test_dry_run_reports_but_allows_command(self):
         with tempfile.TemporaryDirectory() as directory:

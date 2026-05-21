@@ -99,6 +99,22 @@ def load_custom_rules(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[Rule, ..
     return tuple(rule for rule in rules if rule is not None)
 
 
+def load_custom_allow_rules(config_path: Path = DEFAULT_CONFIG_PATH) -> tuple[Rule, ...]:
+    if not config_path.exists():
+        return ()
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ()
+
+    items = data.get("allow") if isinstance(data, dict) else []
+    if not isinstance(items, list):
+        return ()
+
+    rules = [_compile_custom_rule(item, index) for index, item in enumerate(items)]
+    return tuple(rule for rule in rules if rule is not None)
+
+
 def load_payload(stdin: str | None = None) -> dict[str, Any]:
     raw = sys.stdin.read() if stdin is None else stdin
     if not raw.strip():
@@ -147,6 +163,11 @@ def match_rules(command: str, rules: Iterable[Rule] | None = None) -> list[Rule]
     return [rule for rule in active_rules if rule.pattern.search(command)]
 
 
+def match_allow_rules(command: str, rules: Iterable[Rule] | None = None) -> list[Rule]:
+    active_rules = tuple(rules) if rules is not None else load_custom_allow_rules()
+    return [rule for rule in active_rules if rule.pattern.search(command)]
+
+
 def redact_secrets(value: str) -> str:
     redacted = value
     for pattern in SECRET_PATTERNS:
@@ -180,6 +201,9 @@ def is_dry_run(payload: dict[str, Any]) -> bool:
 
 def run_hook(payload: dict[str, Any], log_path: Path = DEFAULT_LOG_PATH) -> tuple[int, str]:
     command = find_command(payload)
+    allow_rules = match_allow_rules(command)
+    if allow_rules:
+        return 0, ""
     rules = match_rules(command)
     if not rules:
         return 0, ""
@@ -205,7 +229,14 @@ def write_default_config() -> None:
                         "pattern": r"\bkubectl\s+delete\b.*\b(prod|production)\b",
                         "message": "Deleting production Kubernetes resources needs human approval.",
                     }
-                ]
+                ],
+                "allow": [
+                    {
+                        "name": "local-build-cleanup",
+                        "pattern": r"^rm\s+-rf\s+(build|dist|\.pytest_cache)$",
+                        "message": "Allow deleting local generated build artifacts.",
+                    }
+                ],
             },
             indent=2,
         )

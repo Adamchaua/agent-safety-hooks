@@ -88,6 +88,24 @@ Then edit `~/.agent-safety-hooks/rules.json`, or set `AGENT_SAFETY_HOOKS_DENY_FI
 
 Rules are regular expressions matched case-insensitively against the shell command. Invalid regex patterns are treated as literal text so a typo does not crash the hook.
 
+## ✅ Custom Allow Rules
+
+Some teams have safe cleanup commands they run constantly, such as removing local build output. Add an `allow` list to the same config file to bypass deny rules for exact, trusted patterns:
+
+```json
+{
+  "allow": [
+    {
+      "name": "local-build-cleanup",
+      "pattern": "^rm\\s+-rf\\s+(build|dist|\\.pytest_cache)$",
+      "message": "Allow deleting local generated build artifacts."
+    }
+  ]
+}
+```
+
+Keep allow rules narrow. A broad pattern can weaken the guard.
+
 ## 🟡 Dry-Run Mode
 
 Teams can audit what would be blocked before enforcing the guard:
@@ -112,9 +130,9 @@ python3 -m unittest discover -s tests -v
 
 ## 🗺️ Roadmap
 
-- Custom allow rules for trusted local-only maintenance commands
-- Dry-run mode for teams adopting hooks gradually
 - Adapters/examples for more coding-agent CLIs
+- Preset rule packs for Git, database, cloud, and Kubernetes workflows
+- CI reporter that summarizes blocked command patterns without secrets
 - GitHub Action that checks agent-generated scripts for dangerous commands
 
 ## 💛 Support
