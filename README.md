@@ -80,6 +80,16 @@ Then edit `~/.agent-safety-hooks/rules.json`, or set `AGENT_SAFETY_HOOKS_DENY_FI
 
 Rules are regular expressions matched case-insensitively against the shell command. Invalid regex patterns are treated as literal text so a typo does not crash the hook.
 
+## 🟡 Dry-Run Mode
+
+Teams can audit what would be blocked before enforcing the guard:
+
+```bash
+AGENT_SAFETY_HOOKS_DRY_RUN=true agent-safety-guard
+```
+
+Dry-run mode still logs matching commands, but exits `0` and prints `Would block by agent-safety-hooks (dry run).` instead of blocking the command. Hook payloads can also set `"dry_run": true` for per-call auditing.
+
 ## 🧪 Verification
 
 ```bash

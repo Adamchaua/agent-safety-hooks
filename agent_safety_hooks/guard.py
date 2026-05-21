@@ -13,6 +13,7 @@ from typing import Any, Iterable
 CONFIG_DIR = Path(os.environ.get("AGENT_SAFETY_HOME", Path.home() / ".agent-safety-hooks"))
 DEFAULT_CONFIG_PATH = Path(os.environ.get("AGENT_SAFETY_HOOKS_DENY_FILE", CONFIG_DIR / "rules.json"))
 DEFAULT_LOG_PATH = CONFIG_DIR / "blocked.jsonl"
+DRY_RUN_ENV = "AGENT_SAFETY_HOOKS_DRY_RUN"
 
 
 @dataclass(frozen=True)
@@ -149,6 +150,14 @@ def write_block_log(command: str, path: str, rules: list[Rule], log_path: Path =
         handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
+def is_dry_run(payload: dict[str, Any]) -> bool:
+    value = payload.get("dry_run")
+    if isinstance(value, bool):
+        return value
+    env_value = os.environ.get(DRY_RUN_ENV, "")
+    return env_value.lower() in {"1", "true", "yes", "on"}
+
+
 def run_hook(payload: dict[str, Any], log_path: Path = DEFAULT_LOG_PATH) -> tuple[int, str]:
     command = find_command(payload)
     rules = match_rules(command)
@@ -157,8 +166,10 @@ def run_hook(payload: dict[str, Any], log_path: Path = DEFAULT_LOG_PATH) -> tupl
     path = project_path(payload)
     write_block_log(command, path, rules, log_path)
     reasons = "\n".join(f"- {rule.message}" for rule in rules)
-    message = f"Blocked by agent-safety-hooks.\n{reasons}\nCommand: {command}\nProject: {path}"
-    return 2, message
+    dry_run = is_dry_run(payload)
+    prefix = "Would block by agent-safety-hooks (dry run)." if dry_run else "Blocked by agent-safety-hooks."
+    message = f"{prefix}\n{reasons}\nCommand: {command}\nProject: {path}"
+    return (0 if dry_run else 2), message
 
 
 def write_default_config() -> None:

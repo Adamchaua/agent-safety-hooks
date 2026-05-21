@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import agent_safety_hooks.guard as guard
-from agent_safety_hooks.guard import find_command, load_custom_rules, match_rules, run_hook
+from agent_safety_hooks.guard import find_command, is_dry_run, load_custom_rules, match_rules, run_hook
 
 
 class GuardTest(unittest.TestCase):
@@ -75,6 +75,21 @@ class GuardTest(unittest.TestCase):
             matches = match_rules("kubectl delete pod api -n prod", rules)
             self.assertEqual([rule.name for rule in matches], ["prod-kubectl-delete"])
             self.assertEqual(matches[0].message, "Production deletes need approval.")
+
+    def test_dry_run_reports_but_allows_command(self):
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "blocked.jsonl"
+            code, message = run_hook(
+                {"tool_input": {"command": "rm -rf build"}, "cwd": "/repo", "dry_run": True},
+                log_path=log_path,
+            )
+            self.assertEqual(code, 0)
+            self.assertIn("Would block by agent-safety-hooks", message)
+            self.assertTrue(log_path.exists())
+
+    def test_dry_run_env_var_enables_audit_mode(self):
+        with patch.dict(os.environ, {"AGENT_SAFETY_HOOKS_DRY_RUN": "true"}):
+            self.assertTrue(is_dry_run({}))
 
     def test_invalid_custom_regex_falls_back_to_literal_match(self):
         with tempfile.TemporaryDirectory() as directory:
