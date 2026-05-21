@@ -14,6 +14,15 @@ CONFIG_DIR = Path(os.environ.get("AGENT_SAFETY_HOME", Path.home() / ".agent-safe
 DEFAULT_CONFIG_PATH = Path(os.environ.get("AGENT_SAFETY_HOOKS_DENY_FILE", CONFIG_DIR / "rules.json"))
 DEFAULT_LOG_PATH = CONFIG_DIR / "blocked.jsonl"
 DRY_RUN_ENV = "AGENT_SAFETY_HOOKS_DRY_RUN"
+REDACTION = "[REDACTED]"
+
+SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"(?i)\b([A-Z0-9_]*(?:TOKEN|SECRET|PASSWORD|API_KEY|PRIVATE_KEY)[A-Z0-9_]*=)([^\s;&|]+)"),
+    re.compile(r"(?i)\b(authorization:\s*bearer\s+)([^\s'\"]+)"),
+    re.compile(r"(?i)\b(x-api-key:\s*)([^\s'\"]+)"),
+    re.compile(r"\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9_]{20,}\b"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
+)
 
 
 @dataclass(frozen=True)
@@ -137,12 +146,22 @@ def match_rules(command: str, rules: Iterable[Rule] | None = None) -> list[Rule]
     return [rule for rule in active_rules if rule.pattern.search(command)]
 
 
+def redact_secrets(value: str) -> str:
+    redacted = value
+    for pattern in SECRET_PATTERNS:
+        if pattern.groups >= 2:
+            redacted = pattern.sub(lambda match: f"{match.group(1)}{REDACTION}", redacted)
+        else:
+            redacted = pattern.sub(REDACTION, redacted)
+    return redacted
+
+
 def write_block_log(command: str, path: str, rules: list[Rule], log_path: Path = DEFAULT_LOG_PATH) -> None:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     entry = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "project_path": path,
-        "attempted_command": command,
+        "attempted_command": redact_secrets(command),
         "rules": [rule.name for rule in rules],
         "messages": [rule.message for rule in rules],
     }
@@ -168,7 +187,7 @@ def run_hook(payload: dict[str, Any], log_path: Path = DEFAULT_LOG_PATH) -> tupl
     reasons = "\n".join(f"- {rule.message}" for rule in rules)
     dry_run = is_dry_run(payload)
     prefix = "Would block by agent-safety-hooks (dry run)." if dry_run else "Blocked by agent-safety-hooks."
-    message = f"{prefix}\n{reasons}\nCommand: {command}\nProject: {path}"
+    message = f"{prefix}\n{reasons}\nCommand: {redact_secrets(command)}\nProject: {path}"
     return (0 if dry_run else 2), message
 
 

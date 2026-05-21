@@ -25,6 +25,8 @@ Blocked attempts are logged to:
 ~/.agent-safety-hooks/blocked.jsonl
 ```
 
+The log redacts common token and key shapes before writing command text, including `*_TOKEN=...`, `*_API_KEY=...`, bearer tokens, GitHub `ghp_...` tokens, and `sk-...` API keys.
+
 ## 🚀 Quick Start
 
 ```bash

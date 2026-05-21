@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import agent_safety_hooks.guard as guard
-from agent_safety_hooks.guard import find_command, is_dry_run, load_custom_rules, match_rules, run_hook
+from agent_safety_hooks.guard import find_command, is_dry_run, load_custom_rules, match_rules, redact_secrets, run_hook
 
 
 class GuardTest(unittest.TestCase):
@@ -108,6 +108,24 @@ class GuardTest(unittest.TestCase):
                     self.assertTrue(reloaded_guard.match_rules("terraform destroy"))
                 finally:
                     reload(guard)
+
+    def test_redacts_secrets_before_logging(self):
+        command = "OPENAI_API_KEY=sk-testSecretValue1234567890; rm -rf build"
+        with tempfile.TemporaryDirectory() as directory:
+            log_path = Path(directory) / "blocked.jsonl"
+            _, message = run_hook({"tool_input": {"command": command}, "cwd": "/repo"}, log_path=log_path)
+            entry = json.loads(log_path.read_text().strip())
+            self.assertEqual(entry["attempted_command"], "OPENAI_API_KEY=[REDACTED]; rm -rf build")
+            self.assertIn("OPENAI_API_KEY=[REDACTED]; rm -rf build", message)
+            self.assertNotIn("sk-testSecretValue", entry["attempted_command"])
+            self.assertNotIn("sk-testSecretValue", message)
+
+    def test_redacts_common_token_shapes(self):
+        self.assertEqual(
+            redact_secrets("curl -H 'Authorization: Bearer ghp_abcdefghijklmnopqrstuvwxyz'"),
+            "curl -H 'Authorization: Bearer [REDACTED]'",
+        )
+        self.assertEqual(redact_secrets("X-API-Key: abc123 rm -rf build"), "X-API-Key: [REDACTED] rm -rf build")
 
 
 if __name__ == "__main__":
